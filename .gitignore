@@ -142,5 +142,6 @@ dmypy.json
 # data folders
 datasets/
 data/
+generated/
 
 # End of https://www.gitignore.io/api/git,python,jupyternotebooks

@@ -75,7 +75,7 @@ class DrugDataset(Dataset):
     def __getitem__(self, idx):
         drug = self.X_tr[idx, :]
         drug = torch.from_numpy(drug)
-        label = self.Y_tr[idx]
+        label = np.array(self.Y_tr[idx])
         label = torch.from_numpy(label)
 
         if self.transform:
@@ -83,37 +83,14 @@ class DrugDataset(Dataset):
 
         return (drug, label)
 
-# def setup():
-#     lr = 0.0002
-#     b1 = 0.5
-#     b2 = 0.999
-#     latent_dim = 100
-#     adversarial_loss = torch.nn.MSELoss()
-#     transform = transforms.Compose([])
-
-#     n_epochs = 200
-#     batch_size = 64
-#     n_cpu = 8
-#     n_classes = 2
-#     gen_shape = (1,51)
-#     sample_interval = 400
-#     save_dir = 'generated/trial_1/'
-#     save_interval = 100
-    
-#     dataset = DrugDataset('/Users/kanetian7/omic-features-successful-targets/kane/final_data.csv', transform=transform)
-#     dataloader = torch.utils.data.DataLoader(
-#         dataset,
-#         batch_size=batch_size,
-#         shuffle=True,
-#     )
-
-#     return (n_epochs, lr, b1, b2, latent_dim, n_cpu, n_classes, 
-#         sample_interval, save_dir, save_interval, gen_shape, adversarial_loss)
-
 def train(X_tr, Y_tr, params):
-    (n_epochs, batch_size, transform, lr, b1, b2, wd, latent_dim, adversarial_loss) = params
+    n_epochs = 250
+    batch_size = 64
+    transform = transforms.Compose([])
+    adversarial_loss = nn.MSELoss()
+    (lr, b1, b2, wd, latent_dim) = params
 
-    dataset = DrugDataset('/Users/kanetian7/omic-features-successful-targets/kane/final_data.csv', transform=transform)
+    dataset = DrugDataset(X_tr, Y_tr, transform=transform)
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
@@ -125,6 +102,9 @@ def train(X_tr, Y_tr, params):
 
     optimizer_G = torch.optim.Adam(generator.parameters(), lr=lr, betas=(b1, b2), weight_decay=wd)
     optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr, betas=(b1, b2), weight_decay=wd)
+
+    gen_losses = []
+    disc_losses = []
 
     for epoch in range(n_epochs):
         for i, (inps, labels) in enumerate(dataloader):
@@ -166,12 +146,14 @@ def train(X_tr, Y_tr, params):
                 "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
                 % (epoch, n_epochs, i, len(dataloader), d_loss.item(), g_loss.item())
             )
-    return generator, discriminator
+            gen_losses.append(g_loss.item())
+            disc_losses.append(d_loss.item())
+    return generator, discriminator, gen_losses, disc_losses
 
 
 def sample_out(generator, n_examples, cl):
-    z = Variable(torch.FloatTensor(np.random.normal(0, 1, (generator.n_examples, generator.latent_dim))))
-    labels = Variable(torch.LongTensor(np.full(generator.n_examples, cl)))
+    z = Variable(torch.FloatTensor(np.random.normal(0, 1, (n_examples, generator.latent_dim))))
+    labels = Variable(torch.LongTensor(np.full(n_examples, cl)))
     gen_out = generator(z, labels)
 
     data = gen_out.detach().numpy()

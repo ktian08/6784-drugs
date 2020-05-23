@@ -2,6 +2,7 @@ import os
 import numpy as np
 import math
 import pandas as pd
+import copy
 
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, Dataset
@@ -10,6 +11,7 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+from sklearn.neighbors import KernelDensity
 
 class Generator(nn.Module):
     def __init__(self, latent_dim):
@@ -83,8 +85,8 @@ class DrugDataset(Dataset):
 
         return (drug, label)
 
-def train(X_tr, Y_tr, params):
-    n_epochs = 250
+def train(X_tr, Y_tr, X_v, Y_v, params):
+    n_epochs = 200
     batch_size = 64
     transform = transforms.Compose([])
     adversarial_loss = nn.MSELoss()
@@ -106,6 +108,12 @@ def train(X_tr, Y_tr, params):
     gen_losses = []
     disc_losses = []
 
+    max_score = -10000000
+    max_gen = None
+    max_disc = None
+    max_gen_pos = None
+    max_gen_neg = None
+    scores = []
     for epoch in range(n_epochs):
         for i, (inps, labels) in enumerate(dataloader):
             batch_size = inps.shape[0]
@@ -148,7 +156,29 @@ def train(X_tr, Y_tr, params):
             )
             gen_losses.append(g_loss.item())
             disc_losses.append(d_loss.item())
-    return generator, discriminator, gen_losses, disc_losses
+
+        if (epoch + 1) % 3 == 0:
+            gen_pos = sample_out(generator, n_examples=int(X_tr.shape[0] * 2), cl=1)
+            gen_neg = sample_out(generator, n_examples=int(X_tr.shape[0] * 2), cl=0)
+            
+            kd_pos = KernelDensity(bandwidth=1.0, kernel='gaussian')
+            kd_pos.fit(gen_pos)
+            logprob_pos = kd_pos.score(X_v[Y_v==1, :])
+            
+            kd_neg = KernelDensity(bandwidth=1.0, kernel='gaussian')
+            kd_neg.fit(gen_neg)
+            logprob_neg = kd_neg.score(X_v[Y_v==0, :])
+            
+            score = logprob_pos + logprob_neg
+            scores.append(score)
+            if score > max_score:
+                max_score = score
+                max_gen = copy.deepcopy(generator)
+                max_disc = copy.deepcopy(discriminator)
+                max_gen_pos = gen_pos.copy()
+                max_gen_neg = gen_neg.copy()
+
+    return max_score, max_gen, max_disc, max_gen_pos, max_gen_neg, gen_losses, disc_losses, scores
 
 
 def sample_out(generator, n_examples, cl):

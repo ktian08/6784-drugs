@@ -143,5 +143,5 @@ dmypy.json
 datasets/
 data/
 generated/
-
+exp/
 # End of https://www.gitignore.io/api/git,python,jupyternotebooks
